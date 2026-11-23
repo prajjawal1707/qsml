@@ -1,6 +1,7 @@
 
-"""QSML 1.0 - GPU state-vector simulator."""
+"""QSML 1.1 - Extended GPU state-vector simulator."""
 
+import math
 import cupy as cp
 import numpy as np
 
@@ -12,52 +13,80 @@ class GPUQuantumRegister:
             raise ValueError("Qubit count must be positive")
 
         if num_qubits > 20:
-            raise MemoryError(
-                "GPU simulator currently limits registers to 20 qubits"
-            )
+            raise MemoryError("Maximum supported register is 20 qubits")
 
         self.num_qubits = num_qubits
         self.size = 2 ** num_qubits
 
-        free_bytes, total_bytes = cp.cuda.runtime.memGetInfo()
-
-        # Reserve room for three state-vector-sized allocations.
+        free_bytes, _ = cp.cuda.runtime.memGetInfo()
         required_bytes = self.size * 16 * 3
 
         if required_bytes > free_bytes * 0.5:
-            raise MemoryError(
-                "Insufficient free GPU memory for safe allocation"
-            )
+            raise MemoryError("Insufficient free GPU memory")
 
         self.state = cp.zeros(self.size, dtype=cp.complex128)
         self.state[0] = 1.0
 
-    def x(self, qubit: int):
-        """Apply Pauli-X gate."""
-        self._validate_qubit(qubit)
+    def _validate_qubit(self, qubit):
+        if not isinstance(qubit, int):
+            raise ValueError("Qubit index must be an integer")
 
+        if not 0 <= qubit < self.num_qubits:
+            raise ValueError("Qubit index out of range")
+
+    def _validate_angle(self, theta):
+        if not isinstance(theta, (int, float)):
+            raise ValueError("Angle must be numeric")
+
+        if not math.isfinite(theta):
+            raise ValueError("Angle must be finite")
+
+    def _pair_indices(self, qubit):
+        """Return indices where the selected bit is zero and one."""
         mask = 1 << qubit
-        zero = cp.arange(self.size)[
-            (cp.arange(self.size) & mask) == 0
-        ]
+        indices = cp.arange(self.size)
+        zero = indices[(indices & mask) == 0]
         one = zero | mask
+        return zero, one
+
+    def x(self, qubit):
+        """Pauli-X gate."""
+        self._validate_qubit(qubit)
+        zero, one = self._pair_indices(qubit)
 
         a = self.state[zero].copy()
         b = self.state[one].copy()
 
         self.state[zero] = b
         self.state[one] = a
-
         return self
 
-    def h(self, qubit: int):
-        """Apply Hadamard gate."""
+    def y(self, qubit):
+        """Pauli-Y gate."""
         self._validate_qubit(qubit)
+        zero, one = self._pair_indices(qubit)
 
+        a = self.state[zero].copy()
+        b = self.state[one].copy()
+
+        self.state[zero] = -1j * b
+        self.state[one] = 1j * a
+        return self
+
+    def z(self, qubit):
+        """Pauli-Z gate."""
+        self._validate_qubit(qubit)
         mask = 1 << qubit
         indices = cp.arange(self.size)
-        zero = indices[(indices & mask) == 0]
-        one = zero | mask
+        selected = indices[(indices & mask) != 0]
+
+        self.state[selected] *= -1
+        return self
+
+    def h(self, qubit):
+        """Hadamard gate."""
+        self._validate_qubit(qubit)
+        zero, one = self._pair_indices(qubit)
 
         a = self.state[zero].copy()
         b = self.state[one].copy()
@@ -66,11 +95,79 @@ class GPUQuantumRegister:
 
         self.state[zero] = (a + b) * scale
         self.state[one] = (a - b) * scale
-
         return self
 
-    def cnot(self, control: int, target: int):
-        """Apply controlled-X gate."""
+    def s(self, qubit):
+        """S phase gate."""
+        self._validate_qubit(qubit)
+        mask = 1 << qubit
+        indices = cp.arange(self.size)
+        selected = indices[(indices & mask) != 0]
+
+        self.state[selected] *= 1j
+        return self
+
+    def t(self, qubit):
+        """T phase gate."""
+        self._validate_qubit(qubit)
+        mask = 1 << qubit
+        indices = cp.arange(self.size)
+        selected = indices[(indices & mask) != 0]
+
+        self.state[selected] *= cp.exp(1j * cp.pi / 4)
+        return self
+
+    def rx(self, qubit, theta):
+        """Rotation around the X axis."""
+        self._validate_qubit(qubit)
+        self._validate_angle(theta)
+
+        zero, one = self._pair_indices(qubit)
+
+        a = self.state[zero].copy()
+        b = self.state[one].copy()
+
+        c = math.cos(theta / 2)
+        s = math.sin(theta / 2)
+
+        self.state[zero] = c * a - 1j * s * b
+        self.state[one] = -1j * s * a + c * b
+        return self
+
+    def ry(self, qubit, theta):
+        """Rotation around the Y axis."""
+        self._validate_qubit(qubit)
+        self._validate_angle(theta)
+
+        zero, one = self._pair_indices(qubit)
+
+        a = self.state[zero].copy()
+        b = self.state[one].copy()
+
+        c = math.cos(theta / 2)
+        s = math.sin(theta / 2)
+
+        self.state[zero] = c * a - s * b
+        self.state[one] = s * a + c * b
+        return self
+
+    def rz(self, qubit, theta):
+        """Rotation around the Z axis."""
+        self._validate_qubit(qubit)
+        self._validate_angle(theta)
+
+        mask = 1 << qubit
+        indices = cp.arange(self.size)
+
+        zero = indices[(indices & mask) == 0]
+        one = indices[(indices & mask) != 0]
+
+        self.state[zero] *= cp.exp(-0.5j * theta)
+        self.state[one] *= cp.exp(0.5j * theta)
+        return self
+
+    def cnot(self, control, target):
+        """Controlled-X gate."""
         self._validate_qubit(control)
         self._validate_qubit(target)
 
@@ -82,41 +179,50 @@ class GPUQuantumRegister:
 
         indices = cp.arange(self.size)
 
-        swap_indices = indices[
+        swap = indices[
             ((indices & control_mask) != 0)
             & ((indices & target_mask) == 0)
         ]
 
-        partner_indices = swap_indices | target_mask
+        partner = swap | target_mask
 
-        a = self.state[swap_indices].copy()
-        b = self.state[partner_indices].copy()
+        a = self.state[swap].copy()
+        b = self.state[partner].copy()
 
-        self.state[swap_indices] = b
-        self.state[partner_indices] = a
-
+        self.state[swap] = b
+        self.state[partner] = a
         return self
 
     def probabilities(self):
-        """Return computational-basis probabilities."""
         return cp.abs(self.state) ** 2
 
     def amplitudes(self):
-        """Copy amplitudes back to CPU."""
         cp.cuda.Stream.null.synchronize()
         return cp.asnumpy(self.state)
 
-    def measure(self, shots: int = 1000, seed: int | None = None):
-        """Sample computational-basis measurements."""
-        if shots < 1:
-            raise ValueError("Shots must be positive")
+    def norm(self):
+        """Return total state probability."""
+        return float(cp.sum(self.probabilities()).get())
+
+    def validate_state(self, tolerance=1e-8):
+        """Check normalization and finite amplitudes."""
+        finite = bool(cp.all(cp.isfinite(self.state)).get())
+        total = self.norm()
+
+        return {
+            "finite": finite,
+            "norm": total,
+            "normalized": finite and abs(total - 1.0) <= tolerance,
+        }
+
+    def measure(self, shots=1000, seed=None):
+        if not isinstance(shots, int) or shots < 1:
+            raise ValueError("Shots must be a positive integer")
 
         probabilities = self.probabilities()
-        probabilities = probabilities / cp.sum(probabilities)
+        probabilities /= cp.sum(probabilities)
 
-        # Copy the small probability vector to CPU for sampling.
         cpu_probabilities = cp.asnumpy(probabilities)
-
         rng = np.random.default_rng(seed)
 
         samples = rng.choice(
@@ -128,17 +234,7 @@ class GPUQuantumRegister:
         results = {}
 
         for sample in samples:
-            bitstring = format(
-                int(sample),
-                f"0{self.num_qubits}b"
-            )
-            results[bitstring] = results.get(bitstring, 0) + 1
+            state = format(int(sample), f"0{self.num_qubits}b")
+            results[state] = results.get(state, 0) + 1
 
         return results
-
-    def _validate_qubit(self, qubit: int):
-        if not isinstance(qubit, int):
-            raise ValueError("Qubit index must be an integer")
-
-        if not 0 <= qubit < self.num_qubits:
-            raise ValueError("Qubit index out of range")

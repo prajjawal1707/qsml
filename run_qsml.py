@@ -1,72 +1,599 @@
-
+import json
+import traceback
 from pathlib import Path
 
-from qsml.interpreter import execute_program
-from qsml.decision import DecisionEngine
-from qsml.compute import plan_execution
+import numpy as np
 
-
-program_path = Path("programs/first_search.qsml")
-source = program_path.read_text(encoding="utf-8")
-
-print("=" * 55)
-print("QSML 0.6 — ADAPTIVE HARDWARE ENGINE")
-print("=" * 55)
-
-from qsml.language import parse_program
-
-# 1. Read the workload size before allocating simulator memory.
-instructions = parse_program(source)
-
-register_instruction = next(
-    (item for item in instructions if item["command"] == "REGISTER"),
-    None,
+from qsml.v2_engine import (
+    QSML2Engine,
+    OptimizationService,
+    BenchmarkSuite,
+    print_report,
 )
 
-if register_instruction is None:
-    raise ValueError("Program must contain a REGISTER instruction")
 
-num_qubits = register_instruction["qubits"]
+ROOT = Path(__file__).resolve().parent
+PROGRAM_FILE = ROOT / "programs" / "first_search.qsml"
 
-# 2. Check resources before running the simulator.
-print("\n[1] ADAPTIVE HARDWARE PLANNER")
 
-plan = plan_execution(num_qubits)
+def passed(name):
+    print(f"[PASS] {name}")
 
-print("Recommended device:", plan.recommended_device)
-print(f"Estimated memory: {plan.estimated_memory_mb:.4f} MB")
-print(f"Available system RAM: {plan.cpu_available_mb:.2f} MB")
 
-if plan.gpu_available_mb is not None:
-    print(f"Available GPU memory: {plan.gpu_available_mb:.2f} MB")
-else:
-    print("CUDA GPU backend: Not available to QSML")
+def failed(name, error):
+    print(f"[FAIL] {name}: {error}")
 
-print("Reason:", plan.reason)
 
-if not plan.can_run:
-    raise MemoryError("QSML stopped: insufficient safe memory.")
+def main():
+    print("\n" + "=" * 60)
+    print("             QSML 2.0 — FULL SYSTEM TEST")
+    print("=" * 60)
 
-# 3. Execute only after the resource check passes.
-output = execute_program(source, seed=42)
+    engine = QSML2Engine()
+    optimization = OptimizationService()
 
-print("\n[2] PROGRAM INFORMATION")
-print("Registered qubits:", output["qubits"])
-print("Marked states:", output["marked_states"])
+    tests_passed = 0
+    tests_failed = 0
 
-# 4. Analyse the result.
-result = output["result"]
-engine = DecisionEngine()
-report = engine.analyse(result)
+    # --------------------------------------------------------
+    # TEST 1 — RESOURCE MANAGER
+    # --------------------------------------------------------
+    print("\n[1] RESOURCE MANAGER")
 
-print("\n[3] DECISION ENGINE")
-print("Selected answer:", report.selected_state)
-print(f"Probability confidence: {report.confidence:.3%}")
-print(f"Measured frequency: {report.measured_frequency:.3%}")
-print(f"Normalized uncertainty: {report.normalized_uncertainty:.3%}")
+    try:
+        resources = engine.resources.snapshot()
+        print(json.dumps(resources.__dict__, indent=2))
 
-print("\n[4] EXECUTION STATUS")
-print("Resource check: PASSED")
-print("Search result:", report.selected_state)
+        assert resources.cpu_count >= 1
+        assert resources.ram_total_gb > 0
 
-print("\nQSML 0.6 HARDWARE PLANNING COMPLETE")
+        passed("Hardware and memory inspection")
+        tests_passed += 1
+    except Exception as exc:
+        failed("Hardware and memory inspection", exc)
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 2 — QSML PARSER
+    # --------------------------------------------------------
+    print("\n[2] QSML LANGUAGE PARSER")
+
+    try:
+        source = PROGRAM_FILE.read_text(encoding="utf-8")
+        program = engine.parser.parse(source)
+
+        assert program.qubits == 3
+        assert program.marked_state == "101"
+        assert program.shots > 0
+
+        print("Parsed program:", program)
+        passed("QSML parser")
+        tests_passed += 1
+    except Exception as exc:
+        failed("QSML parser", exc)
+        tests_failed += 1
+        print("\nCannot continue without a valid QSML program.")
+        print(f"Expected program file: {PROGRAM_FILE}")
+        return
+
+    # --------------------------------------------------------
+    # TEST 3 — CPU GROVER EXECUTION
+    # --------------------------------------------------------
+    print("\n[3] CPU EXECUTION")
+
+    try:
+        cpu_source = source.replace(
+            f"ENGINE {program.engine}",
+            "ENGINE CPU",
+        )
+        if "ENGINE" not in source.upper():
+            cpu_source = "ENGINE CPU\n" + source
+
+        cpu_output = engine.execute(cpu_source)
+
+        assert cpu_output["backend"] == "CPU"
+        assert cpu_output["execution_seconds"] >= 0
+
+        print_report(cpu_output)
+        passed("CPU unified runtime")
+        tests_passed += 1
+    except Exception as exc:
+        failed("CPU unified runtime", exc)
+        traceback.print_exc()
+        cpu_output = None
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 4 — GPU GROVER EXECUTION
+    # --------------------------------------------------------
+    print("\n[4] GPU EXECUTION")
+
+    gpu_output = None
+
+    try:
+        gpu_source = source.replace(
+            f"ENGINE {program.engine}",
+            "ENGINE GPU",
+        )
+        if "ENGINE" not in source.upper():
+            gpu_source = "ENGINE GPU\n" + source
+
+        gpu_output = engine.execute(gpu_source)
+
+        assert gpu_output["backend"] == "GPU"
+
+        print_report(gpu_output)
+        passed("GPU unified runtime")
+        tests_passed += 1
+    except Exception as exc:
+        failed("GPU unified runtime", exc)
+        print("GPU test may fail if CUDA or VRAM is unavailable.")
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 5 — DECISION ENGINE
+    # --------------------------------------------------------
+    print("\n[5] DECISION ENGINE")
+
+    try:
+        selected_output = cpu_output or gpu_output
+        assert selected_output is not None
+
+        decision = selected_output["decision"]
+        assert decision is not None
+        assert decision.get("selected_state") is not None
+
+        print("Decision:", decision)
+        passed("Decision selection")
+        tests_passed += 1
+    except Exception as exc:
+        failed("Decision selection", exc)
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 6 — QUBO OPTIMIZATION
+    # --------------------------------------------------------
+    # --------------------------------------------------------
+    # TEST 6 — QUBO OPTIMIZATION
+    # --------------------------------------------------------
+    print("\n[6] QUBO OPTIMIZATION")
+
+    try:
+        Q = np.array([
+        [-2,  1,  1],
+        [ 1, -2,  1],
+        [ 1,  1, -2],
+        ], dtype=float)
+
+        result = optimization.solve_qubo(
+            Q,
+            backend="CPU",
+            iterations=12000,
+            restarts=8,
+        )
+
+        print("Optimizer output:")
+        print(json.dumps(result, indent=2, default=str))
+
+        solution = result["solution"]
+        energy = result["energy"]
+
+        assert len(solution) == 3
+        assert all(bit in (0, 1) for bit in solution)
+        assert np.isfinite(energy)
+        assert abs(energy - (-2.0)) < 1e-9
+
+        print("Solution:", solution)
+        print("Energy:", energy)
+
+        passed("QUBO optimizer and Max-Cut correctness")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("QUBO optimizer and Max-Cut correctness", exc)
+        traceback.print_exc()
+        tests_failed += 1
+    # --------------------------------------------------------
+    # TEST 7 — BENCHMARK SUITE
+    # --------------------------------------------------------
+    print("\n[7] BENCHMARK SUITE")
+
+    try:
+        benchmark = BenchmarkSuite.run(
+            lambda: sum(i * i for i in range(10000)),
+            repeats=3,
+        )
+
+        print(json.dumps(benchmark, indent=2, default=str))
+        assert benchmark["mean_seconds"] >= 0
+
+        passed("Benchmark timing")
+        tests_passed += 1
+    except Exception as exc:
+        failed("Benchmark timing", exc)
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 8 — CPU/GPU COMPARISON
+    # --------------------------------------------------------
+    print("\n[8] CPU/GPU COMPARISON")
+
+    try:
+        comparison = BenchmarkSuite.compare_cpu_gpu(
+            engine,
+            source,
+            repeats=2,
+        )
+
+        for backend, details in comparison.items():
+            print(f"\n{backend}:")
+            print(json.dumps(details, indent=2, default=str))
+
+        passed("CPU/GPU comparison procedure")
+        tests_passed += 1
+    except Exception as exc:
+        failed("CPU/GPU comparison procedure", exc)
+        tests_failed += 1
+
+
+    # ========================================================
+    # QSML 2.1 — RELIABILITY TESTS
+    # ========================================================
+
+    print("\n" + "=" * 60)
+    print("             QSML 2.1 — RELIABILITY TESTS")
+    print("=" * 60)
+
+    # --------------------------------------------------------
+    # Helper: construct a cycle Max-Cut QUBO
+    # --------------------------------------------------------
+    def make_cycle_qubo(n):
+        """
+        Even cycle Max-Cut.
+        Known optimal energy = -n.
+        """
+        Q = np.zeros((n, n), dtype=float)
+
+        for i in range(n):
+            j = (i + 1) % n
+
+            Q[i, i] -= 1.0
+            Q[j, j] -= 1.0
+
+            Q[i, j] += 0.5
+            Q[j, i] += 0.5
+
+        return Q
+
+    def exact_qubo_energy(matrix, solution):
+        terms = OptimizationService.matrix_to_terms(matrix)
+
+        return sum(
+            coefficient * solution[i] * solution[j]
+            for (i, j), coefficient in terms.items()
+        )
+
+    def brute_force_optimum(matrix):
+        n = matrix.shape[0]
+        best_energy = float("inf")
+
+        for number in range(2 ** n):
+            solution = [
+                (number >> bit) & 1
+                for bit in range(n)
+            ]
+
+            energy = exact_qubo_energy(matrix, solution)
+            best_energy = min(best_energy, energy)
+
+        return best_energy
+
+    # --------------------------------------------------------
+    # TEST 9 — GPU QUBO CORRECTNESS
+    # --------------------------------------------------------
+    print("\n[9] GPU QUBO CORRECTNESS")
+
+    try:
+        available = optimization.optimizer.available_backends()
+
+        if "GPU" not in available:
+            print("[SKIP] CUDA GPU optimizer unavailable")
+        else:
+            Q = make_cycle_qubo(3)
+            expected = brute_force_optimum(Q)
+
+            gpu_result = optimization.solve_qubo(
+                Q,
+                backend="GPU",
+                candidates=32768,
+                seed=42,
+            )
+
+            actual = gpu_result["energy"]
+            solution = gpu_result["solution"]
+
+            print("GPU solution:", solution)
+            print("GPU energy:", actual)
+            print("Expected energy:", expected)
+
+            assert len(solution) == 3
+            assert all(bit in (0, 1) for bit in solution)
+            assert abs(actual - expected) < 1e-8
+
+            passed("GPU QUBO correctness")
+            tests_passed += 1
+
+    except Exception as exc:
+        failed("GPU QUBO correctness", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 10 — MULTIPLE QUBO PROBLEM SIZES
+    # --------------------------------------------------------
+    print("\n[10] MULTIPLE QUBO PROBLEM SIZES")
+
+    try:
+        size_results = []
+
+        for n in (3, 6, 8):
+            Q = make_cycle_qubo(n)
+            expected = brute_force_optimum(Q)
+
+            cpu_result = optimization.solve_qubo(
+                Q,
+                backend="CPU",
+                iterations=12000,
+                restarts=8,
+                seed=42,
+            )
+
+            assert abs(cpu_result["energy"] - expected) < 1e-8
+
+            print(
+                f"{n} variables | "
+                f"CPU energy: {cpu_result['energy']} | "
+                f"Expected: {expected}"
+            )
+
+            size_results.append(n)
+
+        passed("QUBO sizes 3, 6 and 8")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("Multiple QUBO problem sizes", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 11 — CPU/GPU SOLUTION QUALITY
+    # --------------------------------------------------------
+    print("\n[11] CPU/GPU SOLUTION QUALITY")
+
+    try:
+        Q = make_cycle_qubo(8)
+        expected = brute_force_optimum(Q)
+
+        cpu_result = optimization.solve_qubo(
+            Q,
+            backend="CPU",
+            iterations=12000,
+            restarts=8,
+            seed=42,
+        )
+
+        print("CPU energy:", cpu_result["energy"])
+        print("Exact optimum:", expected)
+
+        assert abs(cpu_result["energy"] - expected) < 1e-8
+
+        if "GPU" in optimization.optimizer.available_backends():
+            gpu_result = optimization.solve_qubo(
+                Q,
+                backend="GPU",
+                candidates=32768,
+                seed=42,
+            )
+
+            print("GPU energy:", gpu_result["energy"])
+
+            assert abs(gpu_result["energy"] - expected) < 1e-8
+
+            print("Both backends reached the known optimum.")
+        else:
+            print("[SKIP] GPU comparison unavailable.")
+
+        passed("CPU/GPU solution quality")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("CPU/GPU solution quality", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 12 — RESOURCE AND MEMORY SAFETY
+    # --------------------------------------------------------
+    print("\n[12] RESOURCE AND MEMORY SAFETY")
+
+    try:
+        estimate = engine.resources.estimate_statevector_gb(30)
+
+        print("30-qubit state-vector estimate:", estimate, "GB")
+
+        assert estimate > 0
+
+        # Invalid qubit counts must be rejected.
+        invalid_qubits_rejected = False
+
+        try:
+            engine.resources.estimate_statevector_gb(0)
+        except ValueError:
+            invalid_qubits_rejected = True
+
+        assert invalid_qubits_rejected
+
+        # A 30-qubit state vector requires about 16 GB.
+        # It must be rejected before allocation on this machine.
+        for backend in ("CPU", "GPU", "AUTO"):
+            rejected = False
+
+            try:
+                engine.resources.choose_backend(
+                    backend,
+                    qubits=30,
+                )
+            except (MemoryError, RuntimeError):
+                rejected = True
+
+            assert rejected, (
+                f"{backend} did not reject the oversized workload"
+            )
+
+        print("Oversized state-vector request safely rejected.")
+        passed("Memory estimation and safety checks")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("Memory estimation and safety checks", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 13 — INVALID INPUTS
+    # --------------------------------------------------------
+    print("\n[13] INVALID INPUT VALIDATION")
+
+    try:
+        invalid_cases = [
+            np.array([[1, 2, 3], [4, 5, 6]], dtype=float),
+            np.array([[1, np.nan], [0, 1]], dtype=float),
+            np.zeros((3, 3), dtype=float),
+        ]
+
+        for invalid_matrix in invalid_cases:
+            rejected = False
+
+            try:
+                optimization.solve_qubo(
+                    invalid_matrix,
+                    backend="CPU",
+                )
+            except ValueError:
+                rejected = True
+
+            assert rejected, "Invalid QUBO matrix was not rejected."
+
+        print("Non-square, NaN and empty QUBO inputs rejected.")
+        passed("Invalid input validation")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("Invalid input validation", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 14 — CPU REPEATABILITY
+    # --------------------------------------------------------
+    print("\n[14] CPU REPEATABILITY")
+
+    try:
+        Q = make_cycle_qubo(6)
+
+        first = optimization.solve_qubo(
+            Q,
+            backend="CPU",
+            iterations=5000,
+            restarts=4,
+            seed=123,
+        )
+
+        second = optimization.solve_qubo(
+            Q,
+            backend="CPU",
+            iterations=5000,
+            restarts=4,
+            seed=123,
+        )
+
+        assert first["solution"] == second["solution"]
+        assert abs(first["energy"] - second["energy"]) < 1e-10
+
+        print("First solution:", first["solution"])
+        print("Second solution:", second["solution"])
+        print("Both energies:", first["energy"])
+
+        passed("CPU fixed-seed repeatability")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("CPU repeatability", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 15 — GPU REPEATABILITY
+    # --------------------------------------------------------
+    print("\n[15] GPU REPEATABILITY")
+
+    try:
+        if "GPU" not in optimization.optimizer.available_backends():
+            print("[SKIP] GPU unavailable")
+        else:
+            Q = make_cycle_qubo(6)
+
+            first = optimization.solve_qubo(
+                Q,
+                backend="GPU",
+                candidates=16384,
+                seed=123,
+            )
+
+            second = optimization.solve_qubo(
+                Q,
+                backend="GPU",
+                candidates=16384,
+                seed=123,
+            )
+
+            assert first["solution"] == second["solution"]
+            assert abs(first["energy"] - second["energy"]) < 1e-10
+
+            print("First solution:", first["solution"])
+            print("Second solution:", second["solution"])
+            print("Both energies:", first["energy"])
+
+            passed("GPU fixed-seed repeatability")
+            tests_passed += 1
+
+    except Exception as exc:
+        failed("GPU repeatability", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+
+
+    # --------------------------------------------------------
+    # FINAL SUMMARY
+    # --------------------------------------------------------
+    total = tests_passed + tests_failed
+
+    print("\n" + "=" * 60)
+    print("                 QSML 2.1 RELIABILITY SUMMARY")
+    print("=" * 60)
+    print(f"Tests passed: {tests_passed}")
+    print(f"Tests failed: {tests_failed}")
+    print(f"Total tests:  {total}")
+
+    if tests_failed == 0:
+        print("\nALL TESTS PASSED")
+    else:
+        print("\nSOME TESTS FAILED — inspect the errors above.")
+
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    main()

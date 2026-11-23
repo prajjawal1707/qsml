@@ -1,14 +1,14 @@
+# QSML 2.0 — First unified search program
 
-# My first QSML program
+ENGINE AUTO
 
 REGISTER 3
-
 SUPERPOSITION ALL
 
 MARK 101
-
 AMPLIFY 2
 
 MEASURE 1000
 
+DECIDE BEST
 SHOW RESULTS

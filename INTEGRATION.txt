@@ -1,0 +1,42 @@
+QSML 3.1.2 INTEGRATION
+
+1. Back up your existing file:
+   qsml/constraints.py
+
+2. Copy these three files into your existing qsml folder:
+   qsml/constraints.py
+   qsml/constraint_validation.py
+   qsml/v312_tests.py
+
+3. In run_qsml.py, add this import with the other test imports:
+
+   from qsml.v312_tests import run_v312_tests
+
+4. In main(), after the QSML 3.1.1 test call and before the final summary,
+   add:
+
+       # QSML 3.1.2 — CONSTRAINT MATHEMATICAL VALIDATION
+       extra_passed, extra_failed = run_v312_tests()
+       tests_passed += extra_passed
+       tests_failed += extra_failed
+
+5. Update the final expected test count from 66 to 87:
+   if tests_failed == 0 and total == 87:
+       print("\\nALL 87 TESTS PASSED")
+
+6. Run from your existing GPU environment:
+
+   .\\.venv-gpu\\Scripts\\Activate.ps1
+   python run_qsml.py
+
+DESIGN NOTES
+
+- The generated QUBO omits the constant P * rhs**2 from the squared penalty.
+  The independent validator accounts for this constant offset.
+- Equality constraints are checked over every assignment of the original
+  binary variables.
+- At-most constraints are checked over every original assignment and every
+  slack-bit assignment. The validator also verifies the minimum slack energy
+  for each original assignment.
+- Exhaustive validation is deliberately restricted to small test problems.
+- Existing solver algorithms are unchanged.

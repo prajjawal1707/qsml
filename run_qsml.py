@@ -22,7 +22,16 @@ from qsml.validation import (
 
 from qsml.quality import SolverQualityAnalyzer
 from qsml.adaptive import AdaptiveOptimizer
-from qsml.batching import HybridQUBOEngine
+# from qsml.batching import HybridQUBOEngine
+
+from qsml.benchmarking import BenchmarkRunner
+from qsml.benchmarking_tests import run_benchmarking_tests
+from qsml.v26_v30_tests import run_v26_v30_tests
+from qsml.v31_tests import run_v31_tests
+from qsml.v312_tests import run_v312_tests
+
+
+
 
 ROOT = Path(__file__).resolve().parent
 PROGRAM_FILE = ROOT / "programs" / "first_search.qsml"
@@ -859,171 +868,258 @@ def main():
         traceback.print_exc()
         tests_failed += 1
 
-    # --------------------------------------------------------
-    # FINAL SUMMARY
-    # --------------------------------------------------------
-    total = tests_passed + tests_failed
+
+    # ========================================================
+    # QSML 2.4 — SOLVER QUALITY ANALYSIS
+    # ========================================================
 
     print("\n" + "=" * 60)
-    print("                 QSML 2.1 RELIABILITY SUMMARY")
+    print("             QSML 2.4 — QUALITY TESTS")
     print("=" * 60)
+
+    quality = SolverQualityAnalyzer()
+
+    terms_quality = {
+        (0, 0): -2.0,
+        (1, 1): -2.0,
+        (0, 1): 1.0,
+    }
+
+    # TEST 25 — Exact optimal solution comparison
+    print("\n[25] EXACT OPTIMAL SOLUTION")
+
+    try:
+        comparison = quality.compare(
+            2,
+            terms_quality,
+            {
+                "REFERENCE_TEST": {
+                    "solution": [1, 1],
+                    "energy": -3.0,
+                    "backend": "CPU",
+                    "method": "TEST",
+                    "evaluations": 1,
+                    "elapsed_seconds": 0.001,
+                }
+            },
+        )
+
+        report = comparison["reports"][0]
+
+        assert comparison["exact_energy"] == -3.0
+        assert report["valid"] is True
+        assert report["optimal"] is True
+        assert report["optimality_gap"] == 0.0
+
+        passed("Exact optimal solution comparison")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("Exact optimal solution comparison", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # TEST 26 — Suboptimal solution detection
+    print("\n[26] SUBOPTIMAL SOLUTION DETECTION")
+
+    try:
+        comparison = quality.compare(
+            2,
+            terms_quality,
+            {
+                "SUBOPTIMAL_TEST": {
+                    "solution": [1, 0],
+                    "energy": -2.0,
+                }
+            },
+        )
+
+        report = comparison["reports"][0]
+
+        assert report["valid"] is True
+        assert report["optimal"] is False
+        assert report["optimality_gap"] == 1.0
+
+        passed("Suboptimal solution detection")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("Suboptimal solution detection", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # TEST 27 — Incorrect energy detection
+    print("\n[27] INCORRECT ENERGY DETECTION")
+
+    try:
+        comparison = quality.compare(
+            2,
+            terms_quality,
+            {
+                "INCORRECT_ENERGY_TEST": {
+                    "solution": [1, 1],
+                    "energy": -2.0,
+                }
+            },
+        )
+
+        report = comparison["reports"][0]
+
+        assert report["valid"] is False
+        assert len(report["errors"]) > 0
+
+        passed("Incorrect energy detection")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("Incorrect energy detection", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # TEST 28 — Exact solver size limit
+    print("\n[28] EXACT SOLVER SIZE LIMIT")
+
+    try:
+        rejected = False
+
+        try:
+            quality.compare(
+                21,
+                {},
+                {
+                    "TEST": {
+                        "solution": [0] * 21,
+                        "energy": 0.0,
+                    }
+                },
+            )
+        except ValueError:
+            rejected = True
+
+        assert rejected is True
+
+        passed("Exact solver size limit")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("Exact solver size limit", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # TEST 29 — CPU, GPU and hybrid quality comparison
+    print("\n[29] CPU/GPU/HYBRID QUALITY COMPARISON")
+
+    try:
+        num_variables = 8
+
+        quality_terms = {
+            (i, i): -2.0
+            for i in range(num_variables)
+        }
+
+        for i in range(num_variables):
+            j = (i + 1) % num_variables
+            pair = (min(i, j), max(i, j))
+            quality_terms[pair] = (
+                quality_terms.get(pair, 0.0) + 1.0
+            )
+
+        optimizer = AdaptiveOptimizer()
+
+        cpu_result = optimizer.solve(
+            num_variables,
+            quality_terms,
+            backend="CPU",
+            iterations=12000,
+            restarts=8,
+            seed=42,
+        )
+
+        gpu_result = optimizer.solve(
+            num_variables,
+            quality_terms,
+            backend="GPU",
+            candidates=32768,
+            seed=42,
+        )
+
+        hybrid_result = HybridQUBOEngine().solve(
+            num_variables,
+            quality_terms,
+            gpu_candidates=32768,
+            cpu_iterations=12000,
+            cpu_restarts=8,
+            seed=42,
+        )
+
+        comparison = quality.compare(
+            num_variables,
+            quality_terms,
+            {
+                "CPU": cpu_result,
+                "GPU": gpu_result,
+                "HYBRID": hybrid_result,
+            },
+        )
+
+        assert len(comparison["reports"]) == 3
+
+        for solver_report in comparison["reports"]:
+            assert solver_report["valid"] is True
+            assert solver_report["optimality_gap"] >= -1e-8
+
+        quality.print_report(comparison)
+
+        passed("CPU/GPU/hybrid quality comparison")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("CPU/GPU/hybrid quality comparison", exc)
+        traceback.print_exc()
+        tests_failed += 1
+    # QSML 3.1.1 — SHARED QUBO CONTRACT TESTS
+    extra_passed, extra_failed = run_v31_tests()
+
+    tests_passed += extra_passed
+    tests_failed += extra_failed
+    # QSML 2.5 — REPRODUCIBLE BENCHMARK TESTS
+    extra_passed, extra_failed = run_benchmarking_tests()
+
+    tests_passed += extra_passed
+    tests_failed += extra_failed
+
+    # QSML 2.6–3.0 RELEASE TESTS
+    extra_passed, extra_failed = run_v26_v30_tests()
+
+    tests_passed += extra_passed
+    tests_failed += extra_failed
+
+    # ========================================================
+    # FINAL QSML 3.1.1 TEST SUMMARY
+    # ========================================================
+
+    total = tests_passed + tests_failed
+
+
+    # QSML 3.1.2 — CONSTRAINT MATHEMATICAL VALIDATION
+    extra_passed, extra_failed = run_v312_tests()
+
+    tests_passed += extra_passed
+    tests_failed += extra_failed
+    
+    print("\n" + "=" * 60)
+    print("          QSML 3.1.1 FULL TEST SUMMARY")
+    print("=" * 60)
+
     print(f"Tests passed: {tests_passed}")
     print(f"Tests failed: {tests_failed}")
     print(f"Total tests:  {total}")
 
-    if tests_failed == 0:
-        print("\nALL TESTS PASSED")
+    if tests_failed == 0 and total == 87:
+        print("\nALL 87 TESTS PASSED")
     else:
-        print("\nSOME TESTS FAILED - inspect the errors above.")
-
+        print("\nTEST SUITE INCOMPLETE OR FAILURES DETECTED")
     print("=" * 60)
-
-
-# TEST 25: Compare a known optimal solution against exact reference
-quality = SolverQualityAnalyzer()
-
-terms_quality = {
-    (0, 0): -2.0,
-    (1, 1): -2.0,
-    (0, 1): 1.0,
-}
-
-comparison = quality.compare(
-    2,
-    terms_quality,
-    {
-        "REFERENCE_TEST": {
-            "solution": [1, 1],
-            "energy": -3.0,
-            "backend": "CPU",
-            "method": "TEST",
-            "evaluations": 1,
-            "elapsed_seconds": 0.001,
-        }
-    },
-)
-
-report = comparison["reports"][0]
-
-assert comparison["exact_energy"] == -3.0
-assert report["valid"] is True
-assert report["optimal"] is True
-assert report["optimality_gap"] == 0.0
-
-
-# TEST 26: Detect a valid but suboptimal solution
-comparison = quality.compare(
-    2,
-    terms_quality,
-    {
-        "SUBOPTIMAL_TEST": {
-            "solution": [1, 0],
-            "energy": -2.0,
-        }
-    },
-)
-
-report = comparison["reports"][0]
-
-assert report["valid"] is True
-assert report["optimal"] is False
-assert report["optimality_gap"] == 1.0
-
-
-# TEST 27: Detect a solver's incorrect energy report
-comparison = quality.compare(
-    2,
-    terms_quality,
-    {
-        "INCORRECT_ENERGY_TEST": {
-            "solution": [1, 1],
-            "energy": -2.0,
-        }
-    },
-)
-
-report = comparison["reports"][0]
-
-assert report["valid"] is False
-assert len(report["errors"]) > 0
-
-
-# TEST 28: Enforce exact-reference size limit
-rejected = False
-
-try:
-    quality.compare(
-        21,
-        {},
-        {
-            "TEST": {
-                "solution": [0] * 21,
-                "energy": 0.0,
-            }
-        },
-    )
-except ValueError:
-    rejected = True
-
-assert rejected is True
-
-
-# TEST 29: Compare CPU, GPU, and hybrid solver results
-num_variables = 8
-
-quality_terms = {(i, i): -2.0 for i in range(num_variables)}
-
-for i in range(num_variables):
-    j = (i + 1) % num_variables
-    pair = (min(i, j), max(i, j))
-    quality_terms[pair] = quality_terms.get(pair, 0.0) + 1.0
-
-optimizer = AdaptiveOptimizer()
-
-cpu_result = optimizer.solve(
-    num_variables,
-    quality_terms,
-    backend="CPU",
-    iterations=12000,
-    restarts=8,
-    seed=42,
-)
-
-gpu_result = optimizer.solve(
-    num_variables,
-    quality_terms,
-    backend="GPU",
-    candidates=32768,
-    seed=42,
-)
-
-hybrid_result = HybridQUBOEngine().solve(
-    num_variables,
-    quality_terms,
-    gpu_candidates=32768,
-    cpu_iterations=12000,
-    cpu_restarts=8,
-    seed=42,
-)
-
-comparison = quality.compare(
-    num_variables,
-    quality_terms,
-    {
-        "CPU": cpu_result,
-        "GPU": gpu_result,
-        "HYBRID": hybrid_result,
-    },
-)
-
-assert len(comparison["reports"]) == 3
-
-for solver_report in comparison["reports"]:
-    assert solver_report["valid"] is True
-    assert solver_report["optimality_gap"] >= -1e-8
-
-quality.print_report(comparison)
-
 
 if __name__ == "__main__":
     main()

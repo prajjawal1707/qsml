@@ -1,12 +1,14 @@
-"""QSML 0.9 - GPU-accelerated QUBO engine.
-
-Uses CuPy to evaluate binary QUBO candidate solutions on CUDA.
-"""
-
+"""QSML 3.1.1 - GPU candidate-search QUBO engine."""
 from dataclasses import dataclass
 import math
 
 import cupy as cp
+
+from .qubo_contract import (
+    normalize_qubo_terms,
+    validate_positive_int,
+    validate_seed,
+)
 
 
 @dataclass
@@ -18,11 +20,9 @@ class GPUQUBOResult:
 
 
 class GPUQUBOEngine:
-
     def __init__(self):
         if cp.cuda.runtime.getDeviceCount() < 1:
             raise RuntimeError("No CUDA GPU detected")
-
         self.device = cp.cuda.Device()
 
     def solve(
@@ -32,55 +32,30 @@ class GPUQUBOEngine:
         candidates: int = 4096,
         seed: int = 42,
     ) -> GPUQUBOResult:
-
-        if not isinstance(num_variables, int) or num_variables < 1:
-            raise ValueError("num_variables must be positive")
-
-        if not isinstance(candidates, int) or candidates < 1:
-            raise ValueError("candidates must be positive")
-
-        if not terms:
-            raise ValueError("QUBO terms cannot be empty")
-
-        normalized = {}
-
-        for (i, j), coefficient in terms.items():
-            if not isinstance(i, int) or not isinstance(j, int):
-                raise ValueError("QUBO indices must be integers")
-
-            if not (0 <= i < num_variables and 0 <= j < num_variables):
-                raise ValueError("QUBO index out of range")
-
-            if not math.isfinite(coefficient):
-                raise ValueError("QUBO coefficients must be finite")
-
-            key = (min(i, j), max(i, j))
-            normalized[key] = normalized.get(key, 0.0) + coefficient
+        validate_positive_int(num_variables, "num_variables")
+        validate_positive_int(candidates, "candidates")
+        validate_seed(seed)
+        normalized = normalize_qubo_terms(num_variables, terms)
 
         rng = cp.random.RandomState(seed)
-
-        # Generate binary candidate solutions on the GPU.
         solutions = rng.randint(
-            0,
-            2,
-            size=(candidates, num_variables),
-            dtype=cp.int32,
+            0, 2, size=(candidates, num_variables), dtype=cp.int32
         )
-
         energies = cp.zeros(candidates, dtype=cp.float64)
 
-        # Evaluate the QUBO objective on the GPU.
         for (i, j), coefficient in normalized.items():
             energies += coefficient * solutions[:, i] * solutions[:, j]
 
-        # Find the candidate with minimum energy.
+        cp.cuda.Stream.null.synchronize()
+        if not bool(cp.all(cp.isfinite(energies)).get()):
+            raise ValueError("GPU QUBO energies contain non-finite values")
+
         best_index = int(cp.argmin(energies).get())
-
         best_solution = solutions[best_index].get().astype(int).tolist()
-
         best_energy = float(energies[best_index].get())
 
-        cp.cuda.Stream.null.synchronize()
+        if not math.isfinite(best_energy):
+            raise ValueError("GPU QUBO best energy is not finite")
 
         return GPUQUBOResult(
             solution=best_solution,

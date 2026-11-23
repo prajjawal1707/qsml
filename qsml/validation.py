@@ -1,6 +1,9 @@
+"""QSML independent QUBO validation and exact reference solver."""
 from dataclasses import dataclass
 from itertools import product
 import math
+
+from .qubo_contract import normalize_qubo_terms, validate_positive_int
 
 
 @dataclass
@@ -19,68 +22,34 @@ class ExactQUBOResult:
 
 
 def normalize_terms(num_variables, terms):
-    """Validate and normalize QUBO terms."""
-
-    if not isinstance(num_variables, int) or isinstance(num_variables, bool):
-        raise ValueError("num_variables must be an integer")
-
-    if num_variables < 1:
-        raise ValueError("num_variables must be positive")
-
-    if not isinstance(terms, dict):
-        raise ValueError("terms must be a dictionary")
-
-    normalized = {}
-
-    for key, coefficient in terms.items():
-        if not isinstance(key, tuple) or len(key) != 2:
-            raise ValueError(f"Invalid QUBO term key: {key}")
-
-        i, j = key
-
-        if (
-            not isinstance(i, int)
-            or isinstance(i, bool)
-            or not isinstance(j, int)
-            or isinstance(j, bool)
-        ):
-            raise ValueError("QUBO indices must be integers")
-
-        if not (0 <= i < num_variables):
-            raise ValueError(f"Invalid QUBO index: {i}")
-
-        if not (0 <= j < num_variables):
-            raise ValueError(f"Invalid QUBO index: {j}")
-
-        if not isinstance(coefficient, (int, float)):
-            raise ValueError("QUBO coefficients must be numeric")
-
-        if not math.isfinite(coefficient):
-            raise ValueError("QUBO coefficients must be finite")
-
-        pair = (min(i, j), max(i, j))
-        normalized[pair] = normalized.get(pair, 0.0) + float(coefficient)
-
-    return normalized
+    """Compatibility wrapper for the shared QSML QUBO contract."""
+    return normalize_qubo_terms(num_variables, terms, allow_empty=True)
 
 
 def evaluate_qubo(num_variables, terms, solution):
     """Evaluate E(x) = sum(Q[i,j] * x[i] * x[j])."""
-
     normalized = normalize_terms(num_variables, terms)
 
-    if len(solution) != num_variables:
-        raise ValueError("Solution length does not match num_variables")
+    try:
+        if len(solution) != num_variables:
+            raise ValueError("Solution length does not match num_variables")
+    except TypeError as exc:
+        raise ValueError("Solution must be a sized sequence") from exc
 
     for value in solution:
         if value not in (0, 1):
             raise ValueError("Solution must contain only binary values")
 
-    energy = 0.0
+    try:
+        energy = math.fsum(
+            coefficient * solution[i] * solution[j]
+            for (i, j), coefficient in normalized.items()
+        )
+    except OverflowError as exc:
+        raise ValueError("QUBO energy overflowed") from exc
 
-    for (i, j), coefficient in normalized.items():
-        energy += coefficient * solution[i] * solution[j]
-
+    if not math.isfinite(energy):
+        raise ValueError("QUBO energy must be finite")
     return float(energy)
 
 
@@ -92,20 +61,29 @@ def validate_qubo_solution(
     tolerance=1e-8,
 ):
     """Independently validate a solver's returned solution."""
-
     errors = []
+
+    if (
+        isinstance(tolerance, bool)
+        or not isinstance(tolerance, (int, float))
+        or not math.isfinite(tolerance)
+        or tolerance < 0
+    ):
+        return ValidationReport(
+            valid=False,
+            energy=None,
+            errors=["tolerance must be finite and non-negative"],
+        )
 
     try:
         actual_energy = evaluate_qubo(num_variables, terms, solution)
     except (ValueError, TypeError) as exc:
-        return ValidationReport(
-            valid=False,
-            energy=None,
-            errors=[str(exc)],
-        )
+        return ValidationReport(valid=False, energy=None, errors=[str(exc)])
 
     if reported_energy is not None:
-        if not isinstance(reported_energy, (int, float)):
+        if isinstance(reported_energy, bool) or not isinstance(
+            reported_energy, (int, float)
+        ):
             errors.append("Reported energy must be numeric")
         elif not math.isfinite(reported_energy):
             errors.append("Reported energy must be finite")
@@ -132,12 +110,9 @@ def solve_qubo_exact(
     terms,
     max_variables=20,
 ):
-    """
-    Find the exact QUBO minimum by exhaustive enumeration.
-
-    Warning: complexity grows exponentially with variable count.
-    This is intended for small reference problems and testing.
-    """
+    """Find the exact QUBO minimum by exhaustive enumeration."""
+    validate_positive_int(num_variables, "num_variables")
+    validate_positive_int(max_variables, "max_variables")
 
     if num_variables > max_variables:
         raise ValueError(
@@ -146,19 +121,23 @@ def solve_qubo_exact(
         )
 
     normalized = normalize_terms(num_variables, terms)
-
     best_solution = None
     best_energy = float("inf")
     evaluations = 0
 
     for candidate in product((0, 1), repeat=num_variables):
-        energy = 0.0
+        try:
+            energy = math.fsum(
+                coefficient * candidate[i] * candidate[j]
+                for (i, j), coefficient in normalized.items()
+            )
+        except OverflowError as exc:
+            raise ValueError("QUBO energy overflowed") from exc
 
-        for (i, j), coefficient in normalized.items():
-            energy += coefficient * candidate[i] * candidate[j]
+        if not math.isfinite(energy):
+            raise ValueError("QUBO energy must be finite")
 
         evaluations += 1
-
         if energy < best_energy:
             best_energy = energy
             best_solution = list(candidate)

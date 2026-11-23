@@ -10,7 +10,10 @@ from qsml.v2_engine import (
     BenchmarkSuite,
     print_report,
 )
-
+from qsml.batching import (
+    BatchedGPUQUBOEngine,
+    HybridQUBOEngine,
+)
 
 ROOT = Path(__file__).resolve().parent
 PROGRAM_FILE = ROOT / "programs" / "first_search.qsml"
@@ -573,7 +576,169 @@ def main():
         traceback.print_exc()
         tests_failed += 1
 
+    # ========================================================
+    # QSML 2.2 — BATCHING AND HYBRID TESTS
+    # ========================================================
 
+    print("\n" + "=" * 60)
+    print("             QSML 2.2 — BATCHING TESTS")
+    print("=" * 60)
+
+    # --------------------------------------------------------
+    # TEST 16 — BATCH PLANNER
+    # --------------------------------------------------------
+    print("\n[16] GPU BATCH PLANNER")
+
+    try:
+        planner = BatchedGPUQUBOEngine(
+            max_batch_size=4096
+        )
+
+        batches = planner.plan_batches(
+            total_candidates=10000,
+            batch_size=4096,
+        )
+
+        print("Planned batches:", batches)
+
+        assert batches == [4096, 4096, 1808]
+        assert sum(batches) == 10000
+
+        passed("GPU batch planning")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("GPU batch planning", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 17 — VRAM-AWARE BATCH SIZE
+    # --------------------------------------------------------
+    print("\n[17] VRAM-AWARE BATCH SIZING")
+
+    try:
+        planner = BatchedGPUQUBOEngine(
+            memory_fraction=0.20,
+            max_batch_size=8192,
+        )
+
+        batch_size = planner.choose_batch_size(
+            num_variables=8,
+            free_vram_bytes=1024 * 1024 * 1024,
+        )
+
+        print("Selected batch size:", batch_size)
+
+        assert 1 <= batch_size <= 8192
+
+        small_batch = planner.choose_batch_size(
+            num_variables=8,
+            free_vram_bytes=64 * 1024 * 1024,
+        )
+
+        print("Batch with lower free VRAM:", small_batch)
+
+        assert small_batch <= batch_size
+
+        passed("VRAM-aware batch sizing")
+        tests_passed += 1
+
+    except Exception as exc:
+        failed("VRAM-aware batch sizing", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 18 — BATCHED GPU QUBO
+    # --------------------------------------------------------
+    print("\n[18] BATCHED GPU QUBO")
+
+    try:
+        available = optimization.optimizer.available_backends()
+
+        if "GPU" not in available:
+            print("[SKIP] GPU unavailable")
+        else:
+            Q = make_cycle_qubo(8)
+            terms = OptimizationService.matrix_to_terms(Q)
+            expected = brute_force_optimum(Q)
+
+            batched_gpu = BatchedGPUQUBOEngine(
+                max_batch_size=4096
+            )
+
+            result = batched_gpu.solve(
+                num_variables=8,
+                terms=terms,
+                candidates=32768,
+                seed=42,
+                requested_batch_size=4096,
+            )
+
+            print("Solution:", result["solution"])
+            print("Energy:", result["energy"])
+            print("Batches:", result["batch_count"])
+            print("Evaluations:", result["evaluations"])
+
+            assert result["batch_count"] == 8
+            assert result["evaluations"] > 0
+            assert abs(result["energy"] - expected) < 1e-8
+
+            passed("Batched GPU QUBO correctness")
+            tests_passed += 1
+
+    except Exception as exc:
+        failed("Batched GPU QUBO correctness", exc)
+        traceback.print_exc()
+        tests_failed += 1
+
+    # --------------------------------------------------------
+    # TEST 19 — HYBRID CPU/GPU SEARCH
+    # --------------------------------------------------------
+    print("\n[19] HYBRID CPU/GPU SEARCH")
+
+    try:
+        available = optimization.optimizer.available_backends()
+
+        if "GPU" not in available:
+            print("[SKIP] GPU unavailable")
+        else:
+            Q = make_cycle_qubo(8)
+            terms = OptimizationService.matrix_to_terms(Q)
+            expected = brute_force_optimum(Q)
+
+            hybrid = HybridQUBOEngine(
+                gpu_memory_fraction=0.20,
+                max_gpu_batch_size=4096,
+            )
+
+            result = hybrid.solve(
+                num_variables=8,
+                terms=terms,
+                gpu_candidates=32768,
+                cpu_iterations=12000,
+                cpu_restarts=8,
+                seed=42,
+                gpu_batch_size=4096,
+            )
+
+            print("Selected backend:", result["selected_backend"])
+            print("Selected solution:", result["solution"])
+            print("Selected energy:", result["energy"])
+            print("CPU energy:", result["cpu_result"]["energy"])
+            print("GPU energy:", result["gpu_result"]["energy"])
+
+            assert result["backend"] == "HYBRID"
+            assert abs(result["energy"] - expected) < 1e-8
+
+            passed("Hybrid CPU/GPU correctness")
+            tests_passed += 1
+
+    except Exception as exc:
+        failed("Hybrid CPU/GPU correctness", exc)
+        traceback.print_exc()
+        tests_failed += 1
 
     # --------------------------------------------------------
     # FINAL SUMMARY

@@ -13,7 +13,9 @@ def main() -> None:
     print(f"OS: {info['system']} {info['release']}")
     print(f"CPU: {info['processor']}")
     print(f"Cores: {info['physical_cores']} physical / {info['logical_cores']} logical")
-    print(f"RAM: {info['ram_total_gib']} GiB total / {info['ram_available_gib']} GiB available")
+    print(
+        f"RAM: {info['ram_total_gib']} GiB total / {info['ram_available_gib']} GiB available"
+    )
     print(f"Disk: {info['disk_free_gib']} GiB free of {info['disk_total_gib']} GiB")
     print("Display adapters:", "; ".join(info["display_adapters"]))
     print("NVIDIA:", "; ".join(info["nvidia_smi_gpus"]))
@@ -23,7 +25,9 @@ def main() -> None:
     print("\nMEMORY PLANNER")
     for n in (10, 20, 23, 25, 30):
         print(f"{n:2d} qubits: {format_bytes(state_vector_bytes(n))} raw state vector")
-    print(f"Conservative estimate now: about {limit} qubits (includes working-space allowance)")
+    print(
+        f"Conservative estimate now: about {limit} qubits (includes working-space allowance)"
+    )
     print("This is a guardrail estimate, not a guaranteed safe allocation.")
 
     print("\nPOSSIBILITY ENGINE — GROVER DEMO")

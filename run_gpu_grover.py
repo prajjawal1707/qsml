@@ -1,4 +1,3 @@
-
 from qsml.grover_gpu import GPUGroverSearch
 
 print("=" * 55)
@@ -12,7 +11,7 @@ engine = GPUGroverSearch(num_qubits)
 
 print("\n[1] SEARCH CONFIGURATION")
 print("Qubits:", num_qubits)
-print("Search space:", 2 ** num_qubits)
+print("Search space:", 2**num_qubits)
 print("Marked states:", marked_states)
 
 print("\n[2] GPU SEARCH")
@@ -50,4 +49,3 @@ else:
     print("GPU GROVER SEARCH: CHECK RESULT")
 
 print("\nQSML 1.2 EXECUTION COMPLETE")
-

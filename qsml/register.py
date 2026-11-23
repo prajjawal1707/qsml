@@ -3,6 +3,7 @@
 This is mathematical simulation, not physical quantum hardware.
 Qubit indexing is little-endian: q0 is the least-significant bit.
 """
+
 from __future__ import annotations
 import numpy as np
 import psutil
@@ -86,7 +87,9 @@ class QuantumRegister:
         probs = self.probabilities()
         if not np.isclose(float(probs.sum()), 1.0, atol=1e-10):
             raise RuntimeError("State is not normalized")
-        samples = np.random.default_rng(seed).choice(self.state.size, size=shots, p=probs)
+        samples = np.random.default_rng(seed).choice(
+            self.state.size, size=shots, p=probs
+        )
         counts: dict[str, int] = {}
         for value in samples:
             key = format(int(value), f"0{self.num_qubits}b")
@@ -96,7 +99,8 @@ class QuantumRegister:
     def state_description(self, tolerance: float = 1e-10):
         return [
             (format(i, f"0{self.num_qubits}b"), complex(a))
-            for i, a in enumerate(self.state) if abs(a) > tolerance
+            for i, a in enumerate(self.state)
+            if abs(a) > tolerance
         ]
 
     def validate(self, atol: float = 1e-10) -> bool:

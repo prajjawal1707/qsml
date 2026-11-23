@@ -1,4 +1,3 @@
-
 """QSML 0.8 - General QUBO optimization engine.
 
 Minimizes a quadratic binary objective:
@@ -58,9 +57,7 @@ class QUBOEngine:
                 raise ValueError("QUBO coefficients must be finite")
 
             key = (min(i, j), max(i, j))
-            normalized_terms[key] = (
-                normalized_terms.get(key, 0.0) + coefficient
-            )
+            normalized_terms[key] = normalized_terms.get(key, 0.0) + coefficient
 
         if not normalized_terms:
             raise ValueError("At least one QUBO term is required")
@@ -73,9 +70,7 @@ class QUBOEngine:
 
         rng = random.Random(seed)
 
-        largest_coefficient = max(
-            abs(value) for value in normalized_terms.values()
-        )
+        largest_coefficient = max(abs(value) for value in normalized_terms.values())
 
         start_temperature = max(1.0, largest_coefficient * num_variables)
         end_temperature = 0.001
@@ -85,10 +80,7 @@ class QUBOEngine:
         evaluations = 0
 
         for _ in range(restarts):
-            current = [
-                rng.randint(0, 1)
-                for _ in range(num_variables)
-            ]
+            current = [rng.randint(0, 1) for _ in range(num_variables)]
 
             current_energy = energy(current)
             evaluations += 1

@@ -16,10 +16,10 @@ from .runtime import UnifiedRuntime
 from .adaptive import AdaptiveOptimizer
 from .decision import DecisionEngine
 
-
 # ============================================================
 # QSML 1.7 — RESOURCE MANAGER
 # ============================================================
+
 
 @dataclass
 class ResourceSnapshot:
@@ -45,6 +45,7 @@ class ResourceManager:
 
         try:
             import cupy as cp
+
             device = cp.cuda.Device()
             props = cp.cuda.runtime.getDeviceProperties(device.id)
 
@@ -56,15 +57,15 @@ class ResourceManager:
 
             gpu_available = True
             gpu_name = str(name)
-            gpu_free = free_bytes / (1024 ** 3)
-            gpu_total = total_bytes / (1024 ** 3)
+            gpu_free = free_bytes / (1024**3)
+            gpu_total = total_bytes / (1024**3)
         except Exception:
             pass
 
         return ResourceSnapshot(
             cpu_count=os.cpu_count() or 1,
-            ram_total_gb=round(memory.total / (1024 ** 3), 2),
-            ram_available_gb=round(memory.available / (1024 ** 3), 2),
+            ram_total_gb=round(memory.total / (1024**3), 2),
+            ram_available_gb=round(memory.available / (1024**3), 2),
             gpu_available=gpu_available,
             gpu_name=gpu_name,
             gpu_free_gb=round(gpu_free, 2),
@@ -75,7 +76,7 @@ class ResourceManager:
         if qubits < 1:
             raise ValueError("Qubit count must be at least 1.")
         # complex128 = 16 bytes per amplitude
-        return (2 ** qubits) * 16 / (1024 ** 3)
+        return (2**qubits) * 16 / (1024**3)
 
     def choose_backend(self, requested: str, qubits: int = 1) -> str:
         requested = requested.upper()
@@ -110,6 +111,7 @@ class ResourceManager:
 # ============================================================
 # QSML 1.5 — UNIFIED LANGUAGE PARSER
 # ============================================================
+
 
 @dataclass
 class QSMLProgram:
@@ -208,6 +210,7 @@ class QSMLParser:
 # QSML 1.5 + 1.7 — UNIFIED EXECUTION
 # ============================================================
 
+
 class QSML2Engine:
     def __init__(self):
         self.runtime = UnifiedRuntime()
@@ -227,13 +230,12 @@ class QSML2Engine:
         started = time.perf_counter()
 
         result = self.runtime.grover(
-    num_qubits=program.qubits,
-    marked_states=[program.marked_state],
-    iterations=program.iterations,
-    shots=program.shots,
-    backend=backend,
-)
-
+            num_qubits=program.qubits,
+            marked_states=[program.marked_state],
+            iterations=program.iterations,
+            shots=program.shots,
+            backend=backend,
+        )
 
         elapsed = time.perf_counter() - started
 
@@ -293,18 +295,21 @@ class QSML2Engine:
 # QSML 1.6 — OPTIMIZATION ADAPTER
 # ============================================================
 
+
 def _call_with_supported_arguments(method, values: dict[str, Any]):
     """Pass only keyword arguments accepted by the installed implementation."""
     signature = inspect.signature(method)
     accepts_kwargs = any(
-        p.kind == inspect.Parameter.VAR_KEYWORD
-        for p in signature.parameters.values()
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in signature.parameters.values()
     )
 
-    kwargs = values if accepts_kwargs else {
-        key: value for key, value in values.items()
-        if key in signature.parameters
-    }
+    kwargs = (
+        values
+        if accepts_kwargs
+        else {
+            key: value for key, value in values.items() if key in signature.parameters
+        }
+    )
     return method(**kwargs)
 
 
@@ -384,24 +389,30 @@ class OptimizationService:
 
         elapsed = time.perf_counter() - started
 
-        output = dict(result) if isinstance(result, dict) else (
-            dict(result.__dict__) if hasattr(result, "__dict__")
-            else {"result": str(result)}
+        output = (
+            dict(result)
+            if isinstance(result, dict)
+            else (
+                dict(result.__dict__)
+                if hasattr(result, "__dict__")
+                else {"result": str(result)}
+            )
         )
 
         output["elapsed_seconds"] = round(elapsed, 6)
         output["requested_backend"] = backend
         output["num_variables"] = num_variables
         output["terms"] = {
-    f"{i},{j}": coefficient
-    for (i, j), coefficient in terms.items()
-}
+            f"{i},{j}": coefficient for (i, j), coefficient in terms.items()
+        }
 
         return output
+
 
 # ============================================================
 # QSML 1.8 + 1.9 — BENCHMARKING
 # ============================================================
+
 
 class BenchmarkSuite:
     """Runs repeatable timing tests without claiming unlike workloads are equal."""
@@ -461,6 +472,7 @@ class BenchmarkSuite:
 # QSML 2.0 — REPORTING
 # ============================================================
 
+
 def print_report(output: dict[str, Any]) -> None:
     print("\n" + "=" * 60)
     print("                 QSML 2.0 EXECUTION REPORT")
@@ -491,6 +503,7 @@ def print_report(output: dict[str, Any]) -> None:
 
     print("=" * 60)
 
+
 # ============================================================
 # QSML 1.8 — PARALLEL TASK EXECUTION
 # ============================================================
@@ -511,8 +524,7 @@ class ParallelExecutor:
 
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             futures = {
-                pool.submit(function, item): index
-                for index, item in enumerate(items)
+                pool.submit(function, item): index for index, item in enumerate(items)
             }
 
             for future in as_completed(futures):

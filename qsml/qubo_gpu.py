@@ -1,4 +1,3 @@
-
 """QSML 0.9 - GPU-accelerated QUBO engine.
 
 Uses CuPy to evaluate binary QUBO candidate solutions on CUDA.
@@ -72,21 +71,12 @@ class GPUQUBOEngine:
 
         # Evaluate the QUBO objective on the GPU.
         for (i, j), coefficient in normalized.items():
-            energies += (
-                coefficient
-                * solutions[:, i]
-                * solutions[:, j]
-            )
+            energies += coefficient * solutions[:, i] * solutions[:, j]
 
         # Find the candidate with minimum energy.
         best_index = int(cp.argmin(energies).get())
 
-        best_solution = (
-            solutions[best_index]
-            .get()
-            .astype(int)
-            .tolist()
-        )
+        best_solution = solutions[best_index].get().astype(int).tolist()
 
         best_energy = float(energies[best_index].get())
 

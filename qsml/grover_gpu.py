@@ -1,4 +1,3 @@
-
 """QSML 1.2 - GPU Grover search."""
 
 import math
@@ -16,7 +15,7 @@ class GPUGroverSearch:
 
         self.num_qubits = num_qubits
         self.register = GPUQuantumRegister(num_qubits)
-        self.size = 2 ** num_qubits
+        self.size = 2**num_qubits
 
     def _phase_flip(self, indices_to_flip):
         """Multiply selected state amplitudes by -1."""
@@ -126,11 +125,10 @@ class GPUGroverSearch:
         return {
             "qubits": self.num_qubits,
             "marked_states": sorted(
-                format(index, f"0{self.num_qubits}b")
-                for index in marked_indices
+                format(index, f"0{self.num_qubits}b") for index in marked_indices
             ),
             "iterations": iterations,
-            "top_candidates": candidates[:min(8, self.size)],
+            "top_candidates": candidates[: min(8, self.size)],
             "measurements": measurements,
             "state_validation": self.register.validate_state(),
         }

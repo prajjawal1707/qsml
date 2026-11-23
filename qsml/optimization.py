@@ -1,4 +1,3 @@
-
 """QSML 0.7 - Quantum-inspired optimization.
 
 Uses simulated annealing to search for high-value feasible
@@ -55,12 +54,8 @@ class OptimizationEngine:
         penalty = sum(values) + 1.0
 
         def evaluate(selection):
-            weight = sum(
-                weights[i] for i in range(count) if selection[i]
-            )
-            value = sum(
-                values[i] for i in range(count) if selection[i]
-            )
+            weight = sum(weights[i] for i in range(count) if selection[i])
+            value = sum(values[i] for i in range(count) if selection[i])
 
             excess = max(0.0, weight - capacity)
             score = value - penalty * excess
@@ -134,9 +129,7 @@ class OptimizationEngine:
                 best_weight = local_weight
                 best_value = local_value
 
-        selected_items = [
-            i for i, selected in enumerate(best_selection) if selected
-        ]
+        selected_items = [i for i, selected in enumerate(best_selection) if selected]
 
         return OptimizationResult(
             selected_items=selected_items,

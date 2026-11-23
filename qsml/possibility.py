@@ -1,4 +1,5 @@
 """Possibility Engine: Grover amplitude amplification on a classical simulator."""
+
 from __future__ import annotations
 from dataclasses import dataclass
 import math
@@ -9,6 +10,7 @@ from .register import QuantumRegister
 @dataclass
 class PossibilityResult:
     """Results from a simulated Grover search."""
+
     num_qubits: int
     marked_states: tuple[str, ...]
     iterations: int
@@ -24,7 +26,11 @@ class PossibilityResult:
 
 
 def _validate_bitstring(value: str, num_qubits: int) -> str:
-    if not isinstance(value, str) or len(value) != num_qubits or any(c not in "01" for c in value):
+    if (
+        not isinstance(value, str)
+        or len(value) != num_qubits
+        or any(c not in "01" for c in value)
+    ):
         raise ValueError(f"marked states must be {num_qubits}-character binary strings")
     return value
 
@@ -54,7 +60,9 @@ def grover_search(
 
     count = len(marked)
     if iterations is None:
-        iterations = max(1, int(math.floor((math.pi / 4) * math.sqrt(space_size / count))))
+        iterations = max(
+            1, int(math.floor((math.pi / 4) * math.sqrt(space_size / count)))
+        )
     if iterations < 0:
         raise ValueError("iterations cannot be negative")
 
@@ -76,7 +84,8 @@ def grover_search(
     probs_array = register.probabilities()
     probs = {
         format(i, f"0{num_qubits}b"): float(p)
-        for i, p in enumerate(probs_array) if p > 1e-12
+        for i, p in enumerate(probs_array)
+        if p > 1e-12
     }
     ranked = sorted(probs.items(), key=lambda item: item[1], reverse=True)
     measurements = register.measure(shots=shots, seed=seed)
@@ -86,5 +95,5 @@ def grover_search(
         iterations=iterations,
         measurements=measurements,
         probabilities=probs,
-        top_candidates=ranked[:min(8, len(ranked))],
+        top_candidates=ranked[: min(8, len(ranked))],
     )

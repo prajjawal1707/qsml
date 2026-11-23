@@ -1,4 +1,3 @@
-
 """QSML adaptive hardware planner.
 
 Inspects available system resources and recommends a safe
@@ -30,7 +29,7 @@ def estimate_memory_bytes(num_qubits: int) -> int:
 
     # complex128 = 16 bytes per amplitude.
     # Three copies provide a conservative working estimate.
-    return 3 * 16 * (2 ** num_qubits)
+    return 3 * 16 * (2**num_qubits)
 
 
 def detect_gpu():
@@ -48,7 +47,7 @@ def detect_gpu():
             return None
 
         free_bytes, total_bytes = cp.cuda.runtime.memGetInfo()
-        return free_bytes / (1024 ** 2)
+        return free_bytes / (1024**2)
 
     except Exception:
         # Missing CUDA drivers or incompatible GPU libraries.
@@ -62,10 +61,10 @@ def plan_execution(
     """Choose a safe device recommendation from available resources."""
 
     required_bytes = estimate_memory_bytes(num_qubits)
-    required_mb = required_bytes / (1024 ** 2)
+    required_mb = required_bytes / (1024**2)
 
     available_ram = psutil.virtual_memory().available
-    cpu_available_mb = available_ram / (1024 ** 2)
+    cpu_available_mb = available_ram / (1024**2)
 
     # Keep most available system RAM free for Windows and other apps.
     cpu_budget_mb = cpu_available_mb * 0.20
@@ -79,10 +78,7 @@ def plan_execution(
         gpu_budget_mb = 0.0
 
     cpu_fits = required_mb <= cpu_budget_mb
-    gpu_fits = (
-        gpu_available_mb is not None
-        and required_mb <= gpu_budget_mb
-    )
+    gpu_fits = gpu_available_mb is not None and required_mb <= gpu_budget_mb
 
     if not cpu_fits and not gpu_fits:
         return ComputePlan(

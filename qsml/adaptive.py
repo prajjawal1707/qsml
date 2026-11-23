@@ -1,4 +1,3 @@
-
 """QSML 1.4 - Adaptive optimization engine."""
 
 import time
@@ -29,11 +28,7 @@ class AdaptiveOptimizer:
 
         available = self.available_backends()
 
-        if (
-            "GPU" in available
-            and num_variables >= 12
-            and candidates >= 8192
-        ):
+        if "GPU" in available and num_variables >= 12 and candidates >= 8192:
             return "GPU"
 
         return "CPU"
@@ -62,9 +57,7 @@ class AdaptiveOptimizer:
             raise ValueError("Backend must be auto, CPU, or GPU")
 
         if selected_backend not in available:
-            raise RuntimeError(
-                f"{selected_backend} backend is unavailable"
-            )
+            raise RuntimeError(f"{selected_backend} backend is unavailable")
 
         start = time.perf_counter()
 

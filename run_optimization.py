@@ -1,6 +1,4 @@
-
 from qsml.optimization import OptimizationEngine
-
 
 print("=" * 55)
 print("QSML 0.7 — QUANTUM-INSPIRED OPTIMIZATION")
@@ -40,11 +38,7 @@ print("\n[2] SELECTED ITEMS")
 
 for index in result.selected_items:
     item = items[index]
-    print(
-        f"{item['name']} | "
-        f"Weight: {item['weight']} | "
-        f"Value: {item['value']}"
-    )
+    print(f"{item['name']} | " f"Weight: {item['weight']} | " f"Value: {item['value']}")
 
 print("\n[3] OPTIMIZATION RESULT")
 print("Selection vector:", result.selection)

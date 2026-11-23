@@ -1,8 +1,6 @@
-
 import math
 
 from qsml.register_gpu import GPUQuantumRegister
-
 
 print("=" * 55)
 print("QSML 1.1 — GPU QUANTUM GATE TESTS")
@@ -30,11 +28,7 @@ for name, operation in tests:
 
     status = "PASSED" if check["normalized"] else "FAILED"
 
-    print(
-        f"{name:4} | "
-        f"Norm: {check['norm']:.10f} | "
-        f"{status}"
-    )
+    print(f"{name:4} | " f"Norm: {check['norm']:.10f} | " f"{status}")
 
 print("\n[2] CNOT TEST")
 

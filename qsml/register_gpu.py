@@ -1,4 +1,3 @@
-
 """QSML 1.1 - Extended GPU state-vector simulator."""
 
 import math
@@ -16,7 +15,7 @@ class GPUQuantumRegister:
             raise MemoryError("Maximum supported register is 20 qubits")
 
         self.num_qubits = num_qubits
-        self.size = 2 ** num_qubits
+        self.size = 2**num_qubits
 
         free_bytes, _ = cp.cuda.runtime.memGetInfo()
         required_bytes = self.size * 16 * 3
@@ -179,10 +178,7 @@ class GPUQuantumRegister:
 
         indices = cp.arange(self.size)
 
-        swap = indices[
-            ((indices & control_mask) != 0)
-            & ((indices & target_mask) == 0)
-        ]
+        swap = indices[((indices & control_mask) != 0) & ((indices & target_mask) == 0)]
 
         partner = swap | target_mask
 

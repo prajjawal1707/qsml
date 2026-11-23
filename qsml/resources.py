@@ -1,4 +1,5 @@
 """Memory estimates and conservative state-vector planning."""
+
 from __future__ import annotations
 import math
 

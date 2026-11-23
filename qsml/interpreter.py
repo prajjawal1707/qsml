@@ -1,4 +1,3 @@
-
 """QSML interpreter: executes parsed QSML programs."""
 
 from .language import parse_program, QSMLSyntaxError
@@ -33,9 +32,7 @@ def execute_program(source: str, seed: int | None = None) -> dict:
             state = instruction["state"]
 
             if len(state) != num_qubits:
-                raise QSMLSyntaxError(
-                    "MARK bitstring length must match REGISTER"
-                )
+                raise QSMLSyntaxError("MARK bitstring length must match REGISTER")
 
             marked_states.append(state)
 
@@ -46,9 +43,7 @@ def execute_program(source: str, seed: int | None = None) -> dict:
             shots = instruction["shots"]
 
             if num_qubits is None or not marked_states:
-                raise QSMLSyntaxError(
-                    "REGISTER and MARK are required before MEASURE"
-                )
+                raise QSMLSyntaxError("REGISTER and MARK are required before MEASURE")
 
             result = grover_search(
                 num_qubits=num_qubits,
@@ -60,9 +55,7 @@ def execute_program(source: str, seed: int | None = None) -> dict:
 
         elif command == "SHOW":
             if result is None:
-                raise QSMLSyntaxError(
-                    "MEASURE must run before SHOW RESULTS"
-                )
+                raise QSMLSyntaxError("MEASURE must run before SHOW RESULTS")
 
     return {
         "qubits": num_qubits,

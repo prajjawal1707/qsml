@@ -51,9 +51,7 @@ class BatchedGPUQUBOEngine:
             return int(free_bytes)
 
         except Exception as exc:
-            raise RuntimeError(
-                f"Cannot inspect GPU memory: {exc}"
-            ) from exc
+            raise RuntimeError(f"Cannot inspect GPU memory: {exc}") from exc
 
     @staticmethod
     def estimate_bytes_per_candidate(num_variables: int) -> int:
@@ -82,9 +80,7 @@ class BatchedGPUQUBOEngine:
             raise MemoryError("No free GPU memory is available.")
 
         usable_bytes = int(free_vram_bytes * self.memory_fraction)
-        bytes_per_candidate = self.estimate_bytes_per_candidate(
-            num_variables
-        )
+        bytes_per_candidate = self.estimate_bytes_per_candidate(num_variables)
 
         memory_limited = usable_bytes // bytes_per_candidate
 
@@ -169,13 +165,15 @@ class BatchedGPUQUBOEngine:
 
             total_evaluations += evaluations
 
-            batch_results.append({
-                "batch": batch_index + 1,
-                "candidates": batch_candidates,
-                "seed": batch_seed,
-                "energy": energy,
-                "evaluations": evaluations,
-            })
+            batch_results.append(
+                {
+                    "batch": batch_index + 1,
+                    "candidates": batch_candidates,
+                    "seed": batch_seed,
+                    "energy": energy,
+                    "evaluations": evaluations,
+                }
+            )
 
             if energy < best_energy:
                 best_energy = energy

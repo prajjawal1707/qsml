@@ -1,6 +1,4 @@
-
 from qsml.qubo import QUBOEngine
-
 
 print("=" * 55)
 print("QSML 0.8 — QUBO OPTIMIZATION ENGINE")
@@ -48,18 +46,12 @@ result = engine.solve(
 
 # Calculate the cut weight from the selected binary assignment.
 cut_weight = sum(
-    weight
-    for i, j, weight in edges
-    if result.solution[i] != result.solution[j]
+    weight for i, j, weight in edges if result.solution[i] != result.solution[j]
 )
 
-group_a = [
-    i for i, value in enumerate(result.solution) if value == 0
-]
+group_a = [i for i, value in enumerate(result.solution) if value == 0]
 
-group_b = [
-    i for i, value in enumerate(result.solution) if value == 1
-]
+group_b = [i for i, value in enumerate(result.solution) if value == 1]
 
 print("\n[2] QUBO RESULT")
 print("Binary solution:", result.solution)

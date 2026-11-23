@@ -1,4 +1,3 @@
-
 """QSML Decision Engine.
 
 Analyses possibility results and selects the strongest candidate.
@@ -52,18 +51,12 @@ class DecisionEngine:
         total_shots = sum(measurements.values())
 
         if total_shots > 0:
-            measured_frequency = (
-                measurements.get(selected_state, 0) / total_shots
-            )
+            measured_frequency = measurements.get(selected_state, 0) / total_shots
         else:
             measured_frequency = 0.0
 
         # Shannon entropy: measures uncertainty in the distribution.
-        entropy = -sum(
-            p * math.log2(p)
-            for p in probabilities.values()
-            if p > 0
-        )
+        entropy = -sum(p * math.log2(p) for p in probabilities.values() if p > 0)
 
         candidate_count = len(probabilities)
 

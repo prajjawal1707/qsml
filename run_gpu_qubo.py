@@ -1,8 +1,6 @@
-
 import time
 
 from qsml.qubo_gpu import GPUQUBOEngine
-
 
 print("=" * 55)
 print("QSML 0.9 — GPU QUBO ENGINE")
@@ -44,9 +42,7 @@ result = engine.solve(
 elapsed = time.perf_counter() - start
 
 cut_weight = sum(
-    weight
-    for i, j, weight in edges
-    if result.solution[i] != result.solution[j]
+    weight for i, j, weight in edges if result.solution[i] != result.solution[j]
 )
 
 print("Solution:", result.solution)

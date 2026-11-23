@@ -1,4 +1,3 @@
-
 from qsml.register_gpu import GPUQuantumRegister
 
 print("=" * 55)
@@ -20,8 +19,7 @@ print("\n[2] GPU STATE AMPLITUDES")
 
 for index, amplitude in enumerate(register.amplitudes()):
     state = format(index, "02b")
-    print(f"|{state}> : {amplitude.real:.4f} "
-          f"+ {amplitude.imag:.4f}i")
+    print(f"|{state}> : {amplitude.real:.4f} " f"+ {amplitude.imag:.4f}i")
 
 print("\n[3] STATE PROBABILITIES")
 

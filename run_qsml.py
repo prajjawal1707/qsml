@@ -29,7 +29,7 @@ from qsml.benchmarking_tests import run_benchmarking_tests
 from qsml.v26_v30_tests import run_v26_v30_tests
 from qsml.v31_tests import run_v31_tests
 from qsml.v312_tests import run_v312_tests
-
+from qsml.v313_tests import run_v313_tests
 
 
 
@@ -1078,10 +1078,7 @@ def main():
         traceback.print_exc()
         tests_failed += 1
     # QSML 3.1.1 — SHARED QUBO CONTRACT TESTS
-    extra_passed, extra_failed = run_v31_tests()
-
-    tests_passed += extra_passed
-    tests_failed += extra_failed
+    
     # QSML 2.5 — REPRODUCIBLE BENCHMARK TESTS
     extra_passed, extra_failed = run_benchmarking_tests()
 
@@ -1093,32 +1090,42 @@ def main():
 
     tests_passed += extra_passed
     tests_failed += extra_failed
-
-    # ========================================================
-    # FINAL QSML 3.1.1 TEST SUMMARY
-    # ========================================================
-
-    total = tests_passed + tests_failed
-
-
-    # QSML 3.1.2 — CONSTRAINT MATHEMATICAL VALIDATION
-    extra_passed, extra_failed = run_v312_tests()
-
+    # QSML 3.1.1
+    extra_passed, extra_failed = run_v31_tests()
     tests_passed += extra_passed
     tests_failed += extra_failed
-    
+
+    # QSML 3.1.2
+    extra_passed, extra_failed = run_v312_tests()
+    tests_passed += extra_passed
+    tests_failed += extra_failed
+
+    # QSML 3.1.3
+    extra_passed, extra_failed = run_v313_tests()
+    tests_passed += extra_passed
+    tests_failed += extra_failed
+
+    # FINAL SUMMARY follows here
+        # ========================================================
+    # FINAL QSML TEST SUMMARY
+    # ========================================================
+
+    total_tests = tests_passed + tests_failed
+    expected_tests = 99
+
     print("\n" + "=" * 60)
-    print("          QSML 3.1.1 FULL TEST SUMMARY")
+    print("          QSML 3.1.3 FULL TEST SUMMARY")
     print("=" * 60)
 
     print(f"Tests passed: {tests_passed}")
     print(f"Tests failed: {tests_failed}")
-    print(f"Total tests:  {total}")
+    print(f"Total tests:  {total_tests}")
 
-    if tests_failed == 0 and total == 87:
-        print("\nALL 87 TESTS PASSED")
+    if tests_failed == 0 and total_tests == expected_tests:
+        print(f"\nALL {expected_tests} TESTS PASSED")
     else:
         print("\nTEST SUITE INCOMPLETE OR FAILURES DETECTED")
+
     print("=" * 60)
 
 if __name__ == "__main__":

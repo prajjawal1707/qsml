@@ -57,7 +57,7 @@ class QUBOEngine:
 
         best_solution = [0] * num_variables
         best_energy = energy(best_solution)
-        evaluations = 0
+        evaluations = 1
 
         for _ in range(restarts):
             current = [rng.randint(0, 1) for _ in range(num_variables)]

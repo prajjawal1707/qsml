@@ -1,8 +1,12 @@
 """QSML 3.1.1 - GPU candidate-search QUBO engine."""
+
 from dataclasses import dataclass
 import math
 
-import cupy as cp
+try:
+    import cupy as cp
+except ImportError:
+    cp = None
 
 from .qubo_contract import (
     normalize_qubo_terms,
@@ -21,9 +25,20 @@ class GPUQUBOResult:
 
 class GPUQUBOEngine:
     def __init__(self):
-        if cp.cuda.runtime.getDeviceCount() < 1:
-            raise RuntimeError("No CUDA GPU detected")
-        self.device = cp.cuda.Device()
+        if cp is None:
+            raise RuntimeError(
+                "CuPy is required for GPU QUBO execution. "
+                "Install a CUDA-compatible CuPy package or use backend='CPU'."
+            )
+
+        try:
+            if cp.cuda.runtime.getDeviceCount() < 1:
+                raise RuntimeError("No CUDA GPU detected")
+            self.device = cp.cuda.Device()
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"Cannot initialize CUDA GPU: {exc}") from exc
 
     def solve(
         self,
@@ -32,15 +47,19 @@ class GPUQUBOEngine:
         candidates: int = 4096,
         seed: int = 42,
     ) -> GPUQUBOResult:
+        if cp is None:
+            raise RuntimeError(
+                "CuPy is required for GPU QUBO execution. "
+                "Install a CUDA-compatible CuPy package or use backend='CPU'."
+            )
+
         validate_positive_int(num_variables, "num_variables")
         validate_positive_int(candidates, "candidates")
         validate_seed(seed)
         normalized = normalize_qubo_terms(num_variables, terms)
 
         rng = cp.random.RandomState(seed)
-        solutions = rng.randint(
-            0, 2, size=(candidates, num_variables), dtype=cp.int32
-        )
+        solutions = rng.randint(0, 2, size=(candidates, num_variables), dtype=cp.int32)
         energies = cp.zeros(candidates, dtype=cp.float64)
 
         for (i, j), coefficient in normalized.items():

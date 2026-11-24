@@ -7,11 +7,7 @@ from .qubo_contract import normalize_qubo_terms
 
 
 def _positive_integer(value, name):
-    if (
-        not isinstance(value, int)
-        or isinstance(value, bool)
-        or value < 1
-    ):
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         raise ValueError(f"{name} must be a positive integer")
 
     return value
@@ -104,7 +100,7 @@ def compare_energy_vectors(
     relative_tolerance=1e-10,
     absolute_tolerance=1e-12,
 ):
-    """Compare two vectors of energies and summarize numerical error."""
+    """Compare energy vectors and summarize numerical error."""
 
     relative_tolerance = _finite_number(
         relative_tolerance,
@@ -127,13 +123,11 @@ def compare_energy_vectors(
 
     try:
         reference_values = [
-            _finite_number(value, "reference energy")
-            for value in reference
+            _finite_number(value, "reference energy") for value in reference
         ]
 
         measured_values = [
-            _finite_number(value, "measured energy")
-            for value in measured
+            _finite_number(value, "measured energy") for value in measured
         ]
     except TypeError as exc:
         raise ValueError("Energy inputs must be iterable") from exc
@@ -148,16 +142,17 @@ def compare_energy_vectors(
     relative_errors = []
     errors = []
 
-    for index, (expected, actual) in enumerate(
-        zip(reference_values, measured_values)
-    ):
-        absolute_error = abs(actual - expected)
+    for index, (expected, actual) in enumerate(zip(reference_values, measured_values)):
+        difference = actual - expected
+
+        if not math.isfinite(difference):
+            raise ValueError(f"Energy difference overflowed at index {index}")
+
+        absolute_error = abs(difference)
 
         scale = max(abs(actual), abs(expected))
 
-        relative_error = (
-            absolute_error / scale if scale > 0 else 0.0
-        )
+        relative_error = absolute_error / scale if scale > 0 else 0.0
 
         absolute_errors.append(absolute_error)
         relative_errors.append(relative_error)
@@ -170,17 +165,30 @@ def compare_energy_vectors(
         ):
             errors.append(
                 f"Index {index}: reference={expected}, "
-                f"measured={actual}, absolute error={absolute_error}"
+                f"measured={actual}, "
+                f"absolute error={absolute_error}"
             )
 
-    rms_error = math.hypot(*absolute_errors) / math.sqrt(
-        len(absolute_errors)
-    )
+    # Scale-aware RMS calculation avoids unnecessary overflow
+    # from squaring large absolute errors.
+    max_error = max(absolute_errors)
+
+    if max_error == 0.0:
+        rms_error = 0.0
+    else:
+        normalized_square_sum = math.fsum(
+            (error / max_error) ** 2 for error in absolute_errors
+        )
+
+        rms_error = max_error * math.sqrt(normalized_square_sum / len(absolute_errors))
+
+    if not math.isfinite(rms_error):
+        raise ValueError("RMS energy error is not finite")
 
     return {
         "valid": len(errors) == 0,
         "sample_count": len(reference_values),
-        "max_absolute_error": max(absolute_errors),
+        "max_absolute_error": max_error,
         "max_relative_error": max(relative_errors),
         "rms_absolute_error": rms_error,
         "errors": errors,
@@ -210,6 +218,7 @@ def generate_stress_qubo(
         raise ValueError("seed must be an integer")
 
     density = _finite_number(density, "density")
+
     coefficient_scale = _finite_number(
         coefficient_scale,
         "coefficient_scale",
@@ -222,20 +231,22 @@ def generate_stress_qubo(
         raise ValueError("coefficient_scale must be positive")
 
     rng = random.Random(seed)
+
+    def draw_coefficient():
+        """Draw a finite coefficient without overflowing uniform bounds."""
+
+        magnitude = rng.random() * coefficient_scale
+
+        return magnitude if rng.getrandbits(1) else -magnitude
+
     terms = {}
 
     for i in range(num_variables):
-        terms[(i, i)] = rng.uniform(
-            -coefficient_scale,
-            coefficient_scale,
-        )
+        terms[(i, i)] = draw_coefficient()
 
         for j in range(i + 1, num_variables):
             if rng.random() < density:
-                terms[(i, j)] = rng.uniform(
-                    -coefficient_scale,
-                    coefficient_scale,
-                )
+                terms[(i, j)] = draw_coefficient()
 
     return terms
 
@@ -276,16 +287,9 @@ def estimate_gpu_candidate_memory_bytes(
         "bytes_per_energy",
     )
 
-    candidate_bytes = (
-        num_candidates
-        * num_variables
-        * bytes_per_variable
-    )
+    candidate_bytes = num_candidates * num_variables * bytes_per_variable
 
-    energy_bytes = (
-        num_candidates
-        * bytes_per_energy
-    )
+    energy_bytes = num_candidates * bytes_per_energy
 
     return candidate_bytes + energy_bytes
 
@@ -299,7 +303,10 @@ def check_gpu_memory_budget(
 ):
     """Check whether core GPU array payload fits a supplied budget."""
 
-    max_bytes = _positive_integer(max_bytes, "max_bytes")
+    max_bytes = _positive_integer(
+        max_bytes,
+        "max_bytes",
+    )
 
     estimated_bytes = estimate_gpu_candidate_memory_bytes(
         num_candidates=num_candidates,
